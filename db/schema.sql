@@ -1,0 +1,7 @@
+--CIRCUITS
+CREATE TABLE IF NOT EXISTS circuit (
+    _id SERIAL PRIMARY KEY,
+    slug TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    country TEXT NOT NULL
+);
