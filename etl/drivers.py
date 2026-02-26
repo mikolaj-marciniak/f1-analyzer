@@ -3,20 +3,10 @@ import pandas as pd
 from sqlalchemy.engine import Engine
 from sqlalchemy import text
 import re
+from fastf1_store import get_data
 
 def extract_drivers(season: int) -> pd.DataFrame:
-    schedule = fastf1.get_event_schedule(season)
-
-    drivers = pd.DataFrame()
-
-    for _, event in schedule.iterrows():
-        number = int(event['RoundNumber'])
-        if number != 0:
-            race = fastf1.get_session(season, number, "R")
-            race.load()
-            results = race.results
-            drivers = pd.concat([drivers, results[['DriverId', 'BroadcastName', 'Abbreviation']]])
-    return drivers
+    return get_data(season)[['DriverId', 'BroadcastName', 'Abbreviation']]
 
 def transform_drivers(drivers_df: pd.DataFrame) -> pd.DataFrame:
     required = {'DriverId', 'BroadcastName', 'Abbreviation'}
@@ -47,7 +37,7 @@ def load_drivers(engine: Engine, drivers_df: pd.DataFrame) -> None:
         SET name = EXCLUDED.name,
             abbreviation = EXCLUDED.abbreviation
         WHERE driver.name != EXCLUDED.name
-            OR driver.abbreviation != EXCLUDED.abbreviation
+            OR driver.abbreviation != EXCLUDED.abbreviation;
     """)
 
     records = drivers_df[['source_driver_id', 'name', 'abbreviation']].to_dict(orient="records")

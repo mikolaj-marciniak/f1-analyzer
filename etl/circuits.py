@@ -39,7 +39,7 @@ def load_circuits(engine: Engine, circuits_df: pd.DataFrame) -> None:
         SET name = EXCLUDED.name,
             country = EXCLUDED.country
         WHERE circuit.name != EXCLUDED.name
-            OR circuit.country != EXCLUDED.country
+            OR circuit.country != EXCLUDED.country;
     """)
 
     records = circuits_df[['slug', 'name', 'country']].to_dict(orient="records")
