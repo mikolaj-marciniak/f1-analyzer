@@ -1,9 +1,8 @@
-import fastf1
 import pandas as pd
 from sqlalchemy.engine import Engine
 from sqlalchemy import text
 import re
-from fastf1_store import get_data
+from .fastf1_store import get_data
 
 def extract_drivers(season: int) -> pd.DataFrame:
     return get_data(season)[['DriverId', 'BroadcastName', 'Abbreviation']]
