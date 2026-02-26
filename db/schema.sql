@@ -5,3 +5,11 @@ CREATE TABLE IF NOT EXISTS circuit (
     name TEXT NOT NULL,
     country TEXT NOT NULL
 );
+
+--DRIVERS
+CREATE TABLE IF NOT EXISTS driver (
+    _id SERIAL PRIMARY KEY,
+    source_driver_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    abbreviation TEXT NOT NULL
+);
