@@ -16,6 +16,8 @@ def load_data(season: int) -> None:
             race = fastf1.get_session(season, number, "R")
             race.load()
             results = race.results
+            results['Season'] = season
+            results['RoundNumber'] = number
             all_results = pd.concat([all_results, results])
     data[season] = all_results
 

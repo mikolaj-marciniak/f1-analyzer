@@ -8,8 +8,7 @@ from etl.circuits import extract_circuits, transform_circuits, load_circuits
 from etl.drivers import extract_drivers, transform_drivers, load_drivers
 from etl.teams import extract_teams, transform_teams, load_teams
 from etl.races import extract_races, transform_races, load_races
-
-import fastf1
+from etl.results import extract_results, transform_results, load_results
 
 def run(season: int, engine: Engine | None = None) -> None:
     if engine is None:
@@ -23,6 +22,7 @@ def run(season: int, engine: Engine | None = None) -> None:
     load_drivers(engine, transform_drivers(extract_drivers(season)))
     load_teams(engine, transform_teams(extract_teams(season)))
     load_races(engine, transform_races(extract_races(season)))
+    load_results(engine, transform_results(extract_results(season)))
 
 if __name__ == "__main__":
     run(2024)
