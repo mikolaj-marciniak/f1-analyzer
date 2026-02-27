@@ -7,7 +7,7 @@ from sqlalchemy import text
 ergast = Ergast()
 
 def extract_teams() -> pd.DataFrame:
-    limit = 1000
+    limit = 30
     offset = 0
     chunks = []
 

@@ -7,7 +7,7 @@ from sqlalchemy import text
 ergast = Ergast()
 
 def extract_drivers() -> pd.DataFrame:
-    limit = 1000
+    limit = 30
     offset = 0
     chunks = []
 
@@ -38,6 +38,7 @@ def transform_drivers(drivers_df: pd.DataFrame) -> pd.DataFrame:
     df.drop_duplicates(subset=['source_driver_id'], inplace=True)
     df.reset_index(drop=True, inplace=True)
     df['date_of_birth'] = pd.to_datetime(df['date_of_birth'], errors='coerce').dt.date
+    df['date_of_birth'] = df['date_of_birth'].where(df['date_of_birth'].notna(), None)
 
     return df[['source_driver_id', 'name', 'family_name', 'date_of_birth', 'nationality']]
 

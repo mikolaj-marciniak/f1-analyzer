@@ -7,7 +7,23 @@ from sqlalchemy import text
 ergast = Ergast()
 
 def extract_circuits() -> pd.DataFrame:
-    return ergast.get_circuits()[['circuitId', 'circuitName', 'locality', 'country']].copy()
+    limit = 30
+    offset = 0
+    chunks = []
+
+    while True:
+        resp = ergast.get_circuits(limit=limit, offset=offset)
+
+        if resp is None or resp.empty:
+            break
+
+        chunks.append(resp)
+        offset += limit
+
+        if len(resp) < limit:
+            break
+
+    return (pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()).copy()
 
 def transform_circuits(circuits_df: pd.DataFrame) -> pd.DataFrame:
     required = {'circuitId', 'circuitName', 'locality', 'country'}

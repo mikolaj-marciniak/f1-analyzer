@@ -4,19 +4,37 @@ from fastf1.ergast import Ergast
 from sqlalchemy.engine import Engine
 from sqlalchemy import text
 
+import time
+
 ergast = Ergast()
 
 def extract_results(season: int) -> pd.DataFrame:
-    number_of_rounds = ergast.get_race_schedule(season)['season'].count()
+    limit = 100
+    offset = 0
     chunks = []
 
-    for i in range(number_of_rounds):
-        df = ergast.get_race_results(season, i+1).content[0]
-        df['season'] = season
-        df['round'] = i+1
-        chunks.append(df)
+    while True:
+        time.sleep(1)
+        resp = ergast.get_race_results(limit=limit, offset=offset, season=season)
 
-    return pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()
+        if not resp.content:
+            break
+
+        for idx, row in resp.description.iterrows():
+            runda = row['round']
+            df_race = resp.content[idx]
+
+            df_race['season'] = season
+            df_race['round'] = runda
+
+            if 'fastestLapRank' not in df_race:
+                df_race['fastestLapRank'] = None
+
+            chunks.append(df_race)
+
+        offset += limit
+
+    return (pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()).copy()
 
 def transform_results(results_df: pd.DataFrame) -> pd.DataFrame:
     required = {'season', 'round', 'position', 'points', 'grid', 'driverId', 'constructorId', 'fastestLapRank'}
@@ -30,6 +48,11 @@ def transform_results(results_df: pd.DataFrame) -> pd.DataFrame:
     df['race_key'] = list(zip(df['season'], df['round']))
     df.dropna(subset=['season', 'round', 'source_driver_id', 'source_team_id', 'position', 'points'], inplace=True)
     df.reset_index(drop=True, inplace=True)
+    df["grid"] = pd.to_numeric(df["grid"], errors="coerce")
+    df["grid"] = df["grid"].apply(lambda v: None if pd.isna(v) else int(v))
+
+    df["fastest_lap_rank"] = pd.to_numeric(df["fastest_lap_rank"], errors="coerce")
+    df["fastest_lap_rank"] = df["fastest_lap_rank"].apply(lambda v: None if pd.isna(v) else int(v))
 
     return df[['season', 'round', 'source_driver_id', 'source_team_id', 'position', 'points', 'grid', 'fastest_lap_rank', 'race_key']]
 
@@ -81,6 +104,7 @@ def load_results(engine: Engine, results_df: pd.DataFrame) -> None:
                 OR result.fastest_lap_rank IS DISTINCT FROM EXCLUDED.fastest_lap_rank;
         """)
 
+        df["fastest_lap_rank"] = pd.to_numeric(df["fastest_lap_rank"], errors="coerce").astype("Int64")
         records = df[['fk_race_id', 'fk_driver_id', 'fk_team_id', 'position', 'points', 'grid', 'fastest_lap_rank']].to_dict(orient="records")
 
         conn.execute(stmt, records)
