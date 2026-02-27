@@ -1,8 +1,9 @@
 --CIRCUITS
 CREATE TABLE IF NOT EXISTS circuit (
     _id SERIAL PRIMARY KEY,
-    slug TEXT NOT NULL UNIQUE,
+    source_circuit_id TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
+    location TEXT NOT NULL,
     country TEXT NOT NULL
 );
 
@@ -11,7 +12,9 @@ CREATE TABLE IF NOT EXISTS driver (
     _id SERIAL PRIMARY KEY,
     source_driver_id TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
-    abbreviation TEXT NOT NULL
+    family_name TEXT NOT NULL,
+    date_of_birth DATE,
+    nationality TEXT
 );
 
 --TEAMS
@@ -19,7 +22,7 @@ CREATE TABLE IF NOT EXISTS team (
     _id SERIAL PRIMARY KEY,
     source_team_id TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
-    color TEXT
+    nationality TEXT
 );
 
 --RACES
@@ -48,6 +51,8 @@ CREATE TABLE IF NOT EXISTS result (
     fk_team_id INTEGER NOT NULL,
     position INTEGER NOT NULL CHECK (position >= 1),
     points NUMERIC(5, 2) NOT NULL CHECK (points >= 0),
+    grid INTEGER CHECK (grid >= 0),
+    fastest_lap_rank INTEGER CHECK (fastest_lap_rank >= 1),
 
     CONSTRAINT fk_race_id_constraint
         FOREIGN KEY (fk_race_id)

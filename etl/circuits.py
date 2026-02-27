@@ -1,56 +1,49 @@
-import fastf1
 import pandas as pd
-import re
-import unicodedata
+from fastf1.ergast import Ergast
+
 from sqlalchemy.engine import Engine
 from sqlalchemy import text
 
-def extract_circuits(season: int) -> pd.DataFrame:
-    schedule = fastf1.get_event_schedule(season)
-    return schedule[['Location', 'Country']].copy()
+ergast = Ergast()
+
+def extract_circuits() -> pd.DataFrame:
+    return ergast.get_circuits()[['circuitId', 'circuitName', 'locality', 'country']].copy()
 
 def transform_circuits(circuits_df: pd.DataFrame) -> pd.DataFrame:
-    required = {'Location', 'Country'}
+    required = {'circuitId', 'circuitName', 'locality', 'country'}
     missing = required - set(circuits_df.columns)
     if missing:
         raise ValueError(f"Missing columns in transform_circuits: {missing}")
     
-    df = circuits_df[['Location', 'Country']].copy()
+    df = circuits_df[['circuitId', 'circuitName', 'locality', 'country']].copy()
     
-    df.rename(columns={'Location': 'name', 'Country': 'country'}, inplace=True)
-    df['slug'] = df.apply(slugify_circuit, axis=1)
+    df.rename(columns={'circuitId': 'source_circuit_id', 'circuitName': 'name', 'locality': 'location', 'country': 'country'}, inplace=True)
 
-    df.dropna(subset=['slug', 'name', 'country'], inplace=True)
-    df.drop_duplicates(subset=['slug'], inplace=True)
+    df.dropna(subset=['source_circuit_id', 'name', 'location', 'country'], inplace=True)
+    df.drop_duplicates(subset=['source_circuit_id'], inplace=True)
     df.reset_index(drop=True, inplace=True)
 
-    return df[['slug', 'name', 'country']]
+    return df[['source_circuit_id', 'name', 'location', 'country']].copy()
 
 def load_circuits(engine: Engine, circuits_df: pd.DataFrame) -> None:
-    required = {"slug", "name", "country"}
+    required = {'source_circuit_id', 'name', 'location', 'country'}
     missing = required - set(circuits_df.columns)
     if missing:
         raise ValueError(f"Missing columns in load_circuits: {missing}")
     
     stmt = text("""
-        INSERT INTO circuit(slug, name, country)
-        VALUES (:slug, :name, :country)
-        ON CONFLICT (slug) DO UPDATE
+        INSERT INTO circuit(source_circuit_id, name, location, country)
+        VALUES (:source_circuit_id, :name, :location, :country)
+        ON CONFLICT (source_circuit_id) DO UPDATE
         SET name = EXCLUDED.name,
+            location = EXCLUDED.location,
             country = EXCLUDED.country
-        WHERE circuit.name != EXCLUDED.name
-            OR circuit.country != EXCLUDED.country;
+        WHERE circuit.name IS DISTINCT FROM EXCLUDED.name
+            OR circuit.location IS DISTINCT FROM EXCLUDED.location
+            OR circuit.country IS DISTINCT FROM EXCLUDED.country;
     """)
 
-    records = circuits_df[['slug', 'name', 'country']].to_dict(orient="records")
+    records = circuits_df[['source_circuit_id', 'name', 'location', 'country']].to_dict(orient="records")
 
     with engine.begin() as conn:
         conn.execute(stmt, records)
-
-def slugify_circuit(row: pd.Series) -> str:
-    slug = f"{row['name']}-{row['country']}".strip().lower()
-    slug = unicodedata.normalize("NFKD", slug)
-    slug = "".join(ch for ch in slug if not unicodedata.combining(ch))
-    slug = re.sub(r"[^a-z0-9]+", "-", slug)
-    slug = slug.strip("-")
-    return slug

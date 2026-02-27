@@ -1,28 +1,40 @@
 import pandas as pd
-from .fastf1_store import get_data
+from fastf1.ergast import Ergast
+
 from sqlalchemy.engine import Engine
 from sqlalchemy import text
 
+ergast = Ergast()
+
 def extract_results(season: int) -> pd.DataFrame:
-    return get_data(season)[['Season', 'RoundNumber', 'DriverId', 'TeamId', 'Position', 'Points']]
+    number_of_rounds = ergast.get_race_schedule(season)['season'].count()
+    chunks = []
+
+    for i in range(number_of_rounds):
+        df = ergast.get_race_results(season, i+1).content[0]
+        df['season'] = season
+        df['round'] = i+1
+        chunks.append(df)
+
+    return pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()
 
 def transform_results(results_df: pd.DataFrame) -> pd.DataFrame:
-    required = {'Season', 'RoundNumber', 'DriverId', 'TeamId', 'Position', 'Points'}
+    required = {'season', 'round', 'position', 'points', 'grid', 'driverId', 'constructorId', 'fastestLapRank'}
     missing = required - set(results_df.columns)
     if missing:
         raise ValueError(f"Missing columns in transform_results: {missing}")
     
     df = results_df.copy()
 
-    df.rename(columns={'Season': 'season', 'RoundNumber': 'round', 'DriverId': 'source_driver_id', 'TeamId': 'source_team_id', 'Position': 'position', 'Points': 'points'}, inplace=True)
+    df.rename(columns={'season': 'season', 'round': 'round', 'driverId': 'source_driver_id', 'constructorId': 'source_team_id', 'position': 'position', 'points': 'points', 'grid': 'grid', 'fastestLapRank': 'fastest_lap_rank'}, inplace=True)
     df['race_key'] = list(zip(df['season'], df['round']))
     df.dropna(subset=['season', 'round', 'source_driver_id', 'source_team_id', 'position', 'points'], inplace=True)
     df.reset_index(drop=True, inplace=True)
 
-    return df[['season', 'round', 'source_driver_id', 'source_team_id', 'position', 'points', 'race_key']]
+    return df[['season', 'round', 'source_driver_id', 'source_team_id', 'position', 'points', 'grid', 'fastest_lap_rank', 'race_key']]
 
 def load_results(engine: Engine, results_df: pd.DataFrame) -> None:
-    required = {'season', 'round', 'source_driver_id', 'source_team_id', 'position', 'points', 'race_key'}
+    required = {'season', 'round', 'source_driver_id', 'source_team_id', 'position', 'points', 'grid', 'fastest_lap_rank'}
     missing = required - set(results_df.columns)
     if missing:
         raise ValueError(f"Missing columns in load_results: {missing}")
@@ -52,21 +64,23 @@ def load_results(engine: Engine, results_df: pd.DataFrame) -> None:
         df['fk_race_id'] = df['fk_race_id'].astype(int)
         df['fk_driver_id'] = df['fk_driver_id'].astype(int)
         df['fk_team_id'] = df['fk_team_id'].astype(int)
-        df["position"] = df["position"].astype(int)
-        df["points"] = df["points"].astype(float).round(2)
     
         stmt = text("""
-            INSERT INTO result(fk_race_id, fk_driver_id, fk_team_id, position, points)
-            VALUES (:fk_race_id, :fk_driver_id, :fk_team_id, :position, :points)
+            INSERT INTO result(fk_race_id, fk_driver_id, fk_team_id, position, points, grid, fastest_lap_rank)
+            VALUES (:fk_race_id, :fk_driver_id, :fk_team_id, :position, :points, :grid, :fastest_lap_rank)
             ON CONFLICT (fk_race_id, fk_driver_id) DO UPDATE
             SET fk_team_id = EXCLUDED.fk_team_id,
                 position = EXCLUDED.position,
-                points = EXCLUDED.points
-            WHERE result.fk_team_id != EXCLUDED.fk_team_id
-                OR result.position != EXCLUDED.position
-                OR result.points != EXCLUDED.points;
+                points = EXCLUDED.points,
+                grid = EXCLUDED.grid,
+                fastest_lap_rank = EXCLUDED.fastest_lap_rank    
+            WHERE result.fk_team_id IS DISTINCT FROM EXCLUDED.fk_team_id
+                OR result.position IS DISTINCT FROM EXCLUDED.position
+                OR result.points IS DISTINCT FROM EXCLUDED.points
+                OR result.grid IS DISTINCT FROM EXCLUDED.grid
+                OR result.fastest_lap_rank IS DISTINCT FROM EXCLUDED.fastest_lap_rank;
         """)
 
-        records = df[['fk_race_id', 'fk_driver_id', 'fk_team_id', 'position', 'points']].to_dict(orient="records")
+        records = df[['fk_race_id', 'fk_driver_id', 'fk_team_id', 'position', 'points', 'grid', 'fastest_lap_rank']].to_dict(orient="records")
 
         conn.execute(stmt, records)
