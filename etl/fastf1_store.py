@@ -8,7 +8,7 @@ def load_data(season: int) -> None:
 
     schedule = fastf1.get_event_schedule(season)
 
-    all_results = pd.DataFrame()
+    data_frames = []
 
     for _, event in schedule.iterrows():
         number = int(event['RoundNumber'])
@@ -16,14 +16,15 @@ def load_data(season: int) -> None:
             race = fastf1.get_session(season, number, "R")
             race.load()
             results = race.results
+            if results is None or results.empty:
+                continue
+            results = results.copy()
             results['Season'] = season
             results['RoundNumber'] = number
-            all_results = pd.concat([all_results, results])
-    data[season] = all_results
+            data_frames.append(results)
+    data[season] = pd.concat(data_frames, ignore_index=True) if data_frames else pd.DataFrame()
 
 def get_data(season: int) -> pd.DataFrame:
-    global data
-
     if season not in data:
         load_data(season)
 

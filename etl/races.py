@@ -1,14 +1,13 @@
 import pandas as pd
-from sqlalchemy.engine import Engine
-from sqlalchemy import text
 import fastf1
 from .circuits import slugify_circuit
+from sqlalchemy.engine import Engine
+from sqlalchemy import text
 
 def extract_races(season: int) -> pd.DataFrame:
-    schedule = fastf1.get_event_schedule(season)
+    schedule = fastf1.get_event_schedule(season).copy()
     schedule['Season'] = season
-    schedule = schedule[schedule['RoundNumber'] != 0]
-    return schedule[['Season', 'RoundNumber', 'Location', 'Country']].copy()
+    return schedule[schedule['RoundNumber'] != 0][['Season', 'RoundNumber', 'Location', 'Country']]
 
 def transform_races(races_df: pd.DataFrame) -> pd.DataFrame:
     required = {'Season', 'RoundNumber', 'Location', 'Country'}
@@ -19,17 +18,16 @@ def transform_races(races_df: pd.DataFrame) -> pd.DataFrame:
     df = races_df.copy()
 
     df.rename(columns={'Season': 'season', 'RoundNumber': 'round', 'Location': 'name', 'Country': 'country'}, inplace=True)
-    df['slug'] = df.apply(slugify_race, axis=1)
     df['circuit_slug'] = df.apply(slugify_circuit, axis=1)
 
-    df.dropna(subset=['slug', 'season', 'round', 'circuit_slug'], inplace=True)
-    df.drop_duplicates(subset=['slug'], inplace=True)
+    df.dropna(subset=['season', 'round', 'circuit_slug'], inplace=True)
+    df.drop_duplicates(subset=['season', 'round'], inplace=True)
     df.reset_index(drop=True, inplace=True)
 
-    return df[['slug', 'season', 'round', 'circuit_slug']]
+    return df[['season', 'round', 'circuit_slug']]
 
 def load_races(engine: Engine, races_df: pd.DataFrame) -> None:
-    required = {'slug', 'season', 'round', 'circuit_slug'}
+    required = {'season', 'round', 'circuit_slug'}
     missing = required - set(races_df.columns)
     if missing:
         raise ValueError(f"Missing columns in load_races: {missing}")
@@ -48,20 +46,13 @@ def load_races(engine: Engine, races_df: pd.DataFrame) -> None:
         df['fk_circuit_id'] = df['fk_circuit_id'].astype(int)
     
         stmt = text("""
-            INSERT INTO race(slug, season, round, fk_circuit_id)
-            VALUES (:slug, :season, :round, :fk_circuit_id)
-            ON CONFLICT (slug) DO UPDATE
-            SET season = EXCLUDED.season,
-                round = EXCLUDED.round,
-                fk_circuit_id = EXCLUDED.fk_circuit_id
-            WHERE race.season != EXCLUDED.season
-                OR race.round != EXCLUDED.round
-                OR race.fk_circuit_id != EXCLUDED.fk_circuit_id;
+            INSERT INTO race(season, round, fk_circuit_id)
+            VALUES (:season, :round, :fk_circuit_id)
+            ON CONFLICT (season, round) DO UPDATE
+            SET fk_circuit_id = EXCLUDED.fk_circuit_id
+            WHERE race.fk_circuit_id != EXCLUDED.fk_circuit_id;
         """)
 
-        records = df[['slug', 'season', 'round', 'fk_circuit_id']].to_dict(orient="records")
+        records = df[['season', 'round', 'fk_circuit_id']].to_dict(orient="records")
 
         conn.execute(stmt, records)
-
-def slugify_race(row: pd.Series) -> str:
-    return str(row['season']) + "-" + str(row['round'])

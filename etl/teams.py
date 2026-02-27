@@ -1,7 +1,7 @@
 import pandas as pd
+from .fastf1_store import get_data
 from sqlalchemy.engine import Engine
 from sqlalchemy import text
-from .fastf1_store import get_data
 
 def extract_teams(season: int) -> pd.DataFrame:
     return get_data(season)[['TeamId', 'TeamName', 'TeamColor']]

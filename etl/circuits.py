@@ -1,9 +1,9 @@
 import fastf1
 import pandas as pd
-from sqlalchemy.engine import Engine
-from sqlalchemy import text
 import re
 import unicodedata
+from sqlalchemy.engine import Engine
+from sqlalchemy import text
 
 def extract_circuits(season: int) -> pd.DataFrame:
     schedule = fastf1.get_event_schedule(season)
@@ -48,9 +48,9 @@ def load_circuits(engine: Engine, circuits_df: pd.DataFrame) -> None:
         conn.execute(stmt, records)
 
 def slugify_circuit(row: pd.Series) -> str:
-    text = f"{row['name']}-{row['country']}".strip().lower()
-    text = unicodedata.normalize("NFKD", text)
-    text = "".join(ch for ch in text if not unicodedata.combining(ch))
-    text = re.sub(r"[^a-z0-9]+", "-", text)
-    text = text.strip("-")
-    return text
+    slug = f"{row['name']}-{row['country']}".strip().lower()
+    slug = unicodedata.normalize("NFKD", slug)
+    slug = "".join(ch for ch in slug if not unicodedata.combining(ch))
+    slug = re.sub(r"[^a-z0-9]+", "-", slug)
+    slug = slug.strip("-")
+    return slug
