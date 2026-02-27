@@ -1,6 +1,6 @@
 from pathlib import Path
+
 from sqlalchemy.engine import Engine
-from sqlalchemy import text
 
 def init_db(engine: Engine, schema_path: str | Path | None = None) -> None:
     if schema_path is None:
@@ -8,10 +8,12 @@ def init_db(engine: Engine, schema_path: str | Path | None = None) -> None:
     else:
         schema_path = Path(schema_path)
 
-    sql = schema_path.read_text(encoding="utf-8")
+    if not schema_path.exists():
+        raise FileNotFoundError(f"Nie znaleziono pliku schema.sql: {schema_path}")
 
-    statements = [s.strip() for s in sql.split(";") if s.strip()]
+    sql = schema_path.read_text(encoding="utf-8")
     
     with engine.begin() as conn:
-        for stmt in statements:
-            conn.execute(text(stmt))
+        raw = conn.connection
+        with raw.cursor() as cur:
+            cur.execute(sql)

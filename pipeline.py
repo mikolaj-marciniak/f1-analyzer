@@ -1,7 +1,7 @@
 from sqlalchemy.engine import Engine
 
 from db.engine import get_engine
-from db.init_db import init_db
+from db.init import init_db
 
 from etl.fastf1_store import load_data
 from etl.circuits import extract_circuits, transform_circuits, load_circuits
