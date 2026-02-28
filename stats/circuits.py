@@ -15,6 +15,22 @@ def get_circuits(ascending: bool = True) -> pd.DataFrame:
     with engine.begin() as conn:
         return pd.read_sql(sql, conn)
     
+def get_circuits_by_season(season: int, ascending: bool = True) -> pd.DataFrame:
+    order = "ASC" if ascending else "DESC"
+
+    sql = text(f"""
+        SELECT circuit._id, circuit.name
+        FROM race
+        JOIN circuit ON race.fk_circuit_id = circuit._id
+        WHERE race.season = :season
+        GROUP BY circuit._id, circuit.name
+        ORDER BY circuit.name {order};
+    """)
+
+    engine = get_engine()
+    with engine.begin() as conn:
+        return pd.read_sql(sql, conn, params={'season': season})
+    
 def get_circuit_data(circuit_id: int) -> pd.DataFrame:
     sql = text("""
         SELECT _id, name, location, country

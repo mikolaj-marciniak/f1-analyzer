@@ -2,12 +2,12 @@ import pandas as pd
 from sqlalchemy import text
 from db.engine import get_engine
 
-def get_circuits(ascending: bool = True) -> pd.DataFrame:
+def get_teams(ascending: bool = True) -> pd.DataFrame:
     order = "ASC" if ascending else "DESC"
 
     sql = text(f"""
         SELECT _id, name
-        FROM circuit
+        FROM team
         ORDER BY name {order};
     """)
 
@@ -15,58 +15,56 @@ def get_circuits(ascending: bool = True) -> pd.DataFrame:
     with engine.begin() as conn:
         return pd.read_sql(sql, conn)
     
-def get_circuit_data(circuit_id: int) -> pd.DataFrame:
-    sql = text("""
-        SELECT _id, name, location, country
-        FROM circuit
-        WHERE _id = :circuit_id;
+def get_teams_by_season(season: int, ascending: bool = True) -> pd.DataFrame:
+    order = "ASC" if ascending else "DESC"
+
+    sql = text(f"""
+        SELECT team._id, team.name
+        FROM result
+        JOIN race ON result.fk_race_id = race._id
+        JOIN team ON result.fk_team_id = team._id
+        WHERE race.season = :season
+        GROUP BY team._id, team.name
+        ORDER BY team.name {order};
     """)
 
     engine = get_engine()
     with engine.begin() as conn:
-        return pd.read_sql(sql, conn, params={'circuit_id': circuit_id})
-
-def get_best_driver_on_circuit(circuit_id: int) -> pd.DataFrame:
+        return pd.read_sql(sql, conn, params={'season': season})
+    
+def get_team_data(team_id: int) -> pd.DataFrame:
     sql = text("""
-        SELECT d.name, d.family_name, AVG(res.position::numeric) as mean_pos
+        SELECT _id, name, nationality
+        FROM team
+        WHERE _id = :team_id;
+    """)
+
+    engine = get_engine()
+    with engine.begin() as conn:
+        return pd.read_sql(sql, conn, params={'team_id': team_id})
+
+def get_best_circuit_of_team(team_id: int) -> pd.DataFrame:
+    sql = text("""
+        SELECT c.name, c.location, c.country, AVG(res.position::numeric) as mean_pos
         FROM result res
-        JOIN driver d  ON res.fk_driver_id = d._id
         JOIN race r    ON res.fk_race_id = r._id
-        WHERE r.fk_circuit_id = :circuit_id
+        JOIN circuit c ON r.fk_circuit_id = c._id
+        WHERE res.fk_team_id = :team_id
             AND res.position IS NOT NULL
-        GROUP BY d._id, d.name, d.family_name
+        GROUP BY c._id, c.name, c.location, c.country
         ORDER BY mean_pos ASC
         LIMIT 1;
     """)
 
     engine = get_engine()
     with engine.begin() as conn:
-        return pd.read_sql(sql, conn, params={'circuit_id': circuit_id})
+        return pd.read_sql(sql, conn, params={'team_id': team_id})
 
-def get_best_team_on_circuit(circuit_id: int) -> pd.DataFrame:
+def get_most_gained_positions_by_team(team_id: int) -> pd.DataFrame:
     sql = text("""
-        SELECT t.name, AVG(res.position::numeric) as mean_pos
+        SELECT (res.grid - res.position) diff
         FROM result res
-        JOIN team t  ON res.fk_team_id = t._id
-        JOIN race r    ON res.fk_race_id = r._id
-        WHERE r.fk_circuit_id = :circuit_id
-            AND res.position IS NOT NULL
-        GROUP BY t._id, t.name
-        ORDER BY mean_pos ASC
-        LIMIT 1;
-    """)
-
-    engine = get_engine()
-    with engine.begin() as conn:
-        return pd.read_sql(sql, conn, params={'circuit_id': circuit_id})
-
-def get_most_gained_positions_on_circuit(circuit_id: int) -> pd.DataFrame:
-    sql = text("""
-        SELECT d.name, d.family_name, (res.grid - res.position) diff
-        FROM result res
-        JOIN driver d  ON res.fk_driver_id = d._id
-        JOIN race r    ON res.fk_race_id = r._id
-        WHERE r.fk_circuit_id = :circuit_id
+        WHERE res.fk_team_id = :team_id
             AND res.grid IS NOT NULL
             AND res.position IS NOT NULL
         ORDER BY diff DESC
@@ -75,4 +73,4 @@ def get_most_gained_positions_on_circuit(circuit_id: int) -> pd.DataFrame:
 
     engine = get_engine()
     with engine.begin() as conn:
-        return pd.read_sql(sql, conn, params={'circuit_id': circuit_id})
+        return pd.read_sql(sql, conn, params={'team_id': team_id})

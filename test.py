@@ -4,17 +4,28 @@ import pandas as pd
 
 from stats.circuits import (
     get_circuits,
+    get_circuits_by_season,
     get_circuit_data,
     get_best_driver_on_circuit,
     get_best_team_on_circuit,
     get_most_gained_positions_on_circuit,
 )
+from stats.general import get_seasons
 
 from stats.drivers import (
     get_drivers,
+    get_drivers_by_season,
     get_driver_data,
     get_best_circuit_of_driver,
     get_most_gained_positions_by_driver,
+)
+
+from stats.teams import (
+    get_teams,
+    get_teams_by_season,
+    get_team_data,
+    get_best_circuit_of_team,
+    get_most_gained_positions_by_team,
 )
 
 
@@ -42,8 +53,12 @@ class F1App(tk.Tk):
 
         self._build_circuits_tab()
         self._build_drivers_tab()
+        self._build_teams_tab()
 
-        ttk.Label(self.tab_teams, text="Widok: Zespoły (wkrótce)").pack(anchor="w")
+        self._load_seasons()
+        self._load_circuits_list()
+        self._load_drivers_list()
+        self._load_teams_list()
 
     # =========================
     # TORY
@@ -60,13 +75,29 @@ class F1App(tk.Tk):
         left.grid(row=0, column=0, sticky="nsw", padx=(0, 12))
         left.rowconfigure(1, weight=1)
 
-        ttk.Label(left, text="Tory").grid(row=0, column=0, sticky="w", pady=(0, 6))
+        ttk.Label(left, text="Tory").grid(row=0, column=0, sticky="w", pady=(0, 2))
+
+        # season filter (dropdown) + sort toggle
+        filter_frame = ttk.Frame(left)
+        filter_frame.grid(row=1, column=0, columnspan=2, sticky="we", pady=(0, 0))
+        filter_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(filter_frame, text="Sezon:").grid(row=0, column=0, sticky="w", padx=0, pady=0)
+        self.season_var = tk.StringVar()
+        self.season_cb = ttk.Combobox(filter_frame, textvariable=self.season_var, state="readonly", width=10)
+        self.season_cb.grid(row=0, column=1, sticky="w", padx=2)
+        self.season_cb.bind("<<ComboboxSelected>>", lambda e: self._load_circuits_list())
+
+        # sort ascending/descending button
+        self.sort_ascending = True
+        self.sort_btn = ttk.Button(filter_frame, text="↑", width=2, command=self._toggle_sort)
+        self.sort_btn.grid(row=0, column=2, padx=0)
 
         self.circuits_listbox = tk.Listbox(left, height=20, activestyle="dotbox", width=35)
-        self.circuits_listbox.grid(row=1, column=0, sticky="nsw")
+        self.circuits_listbox.grid(row=2, column=0, sticky="nsw")
 
         lb_scroll = ttk.Scrollbar(left, orient="vertical", command=self.circuits_listbox.yview)
-        lb_scroll.grid(row=1, column=1, sticky="ns")
+        lb_scroll.grid(row=2, column=1, sticky="ns")
         self.circuits_listbox.configure(yscrollcommand=lb_scroll.set)
 
         self.circuits_listbox.bind("<<ListboxSelect>>", self.on_circuit_selected)
@@ -103,11 +134,16 @@ class F1App(tk.Tk):
         self.lbl_best_gain = ttk.Label(stats, text="—")
         self.lbl_best_gain.grid(row=3, column=1, sticky="w", pady=(6, 0))
 
-        self._load_circuits_list()
-
     def _load_circuits_list(self):
+        # decide whether to filter by season
+        season_txt = self.season_var.get().strip()
+        df = pd.DataFrame()
         try:
-            df = get_circuits(ascending=True)
+            if season_txt:
+                season = int(season_txt)  # combobox only contains valid ints or ''
+                df = get_circuits_by_season(season, ascending=self.sort_ascending)
+            else:
+                df = get_circuits(ascending=self.sort_ascending)
         except Exception as e:
             messagebox.showerror("Błąd", f"Nie udało się pobrać listy torów:\n{e}")
             return
@@ -168,6 +204,27 @@ class F1App(tk.Tk):
             self.lbl_best_gain.configure(text=f"{g['name']} {g['family_name']} ({diff_txt})")
 
     # =========================
+    # helper methods
+
+    def _toggle_sort(self):
+        # flip order and refresh button text + list
+        self.sort_ascending = not self.sort_ascending
+        self.sort_btn.configure(text="↑" if self.sort_ascending else "↓")
+        self._load_circuits_list()
+
+    def _load_seasons(self):
+        try:
+            df = get_seasons()
+        except Exception as e:
+            messagebox.showerror("Błąd", f"Nie udało się pobrać listy sezonów:\n{e}")
+            return
+        seasons = df["season"].tolist()
+        seasons_str = [str(s) for s in seasons]
+        self.season_cb["values"] = [""] + seasons_str
+        self.drivers_season_cb["values"] = [""] + seasons_str
+        self.teams_season_cb["values"] = [""] + seasons_str
+
+    # =========================
     # KIEROWCY
     # =========================
     def _build_drivers_tab(self):
@@ -182,13 +239,29 @@ class F1App(tk.Tk):
         left.grid(row=0, column=0, sticky="nsw", padx=(0, 12))
         left.rowconfigure(1, weight=1)
 
-        ttk.Label(left, text="Kierowcy").grid(row=0, column=0, sticky="w", pady=(0, 6))
+        ttk.Label(left, text="Kierowcy").grid(row=0, column=0, sticky="w", pady=(0, 2))
+
+        # season filter (dropdown) + sort toggle
+        filter_frame = ttk.Frame(left)
+        filter_frame.grid(row=1, column=0, columnspan=2, sticky="we", pady=(0, 0))
+        filter_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(filter_frame, text="Sezon:").grid(row=0, column=0, sticky="w", padx=0, pady=0)
+        self.drivers_season_var = tk.StringVar()
+        self.drivers_season_cb = ttk.Combobox(filter_frame, textvariable=self.drivers_season_var, state="readonly", width=10)
+        self.drivers_season_cb.grid(row=0, column=1, sticky="w", padx=2)
+        self.drivers_season_cb.bind("<<ComboboxSelected>>", lambda e: self._load_drivers_list())
+
+        # sort ascending/descending button
+        self.drivers_sort_ascending = True
+        self.drivers_sort_btn = ttk.Button(filter_frame, text="↑", width=2, command=self._toggle_sort_drivers)
+        self.drivers_sort_btn.grid(row=0, column=2, padx=0)
 
         self.drivers_listbox = tk.Listbox(left, height=20, activestyle="dotbox", width=35)
-        self.drivers_listbox.grid(row=1, column=0, sticky="nsw")
+        self.drivers_listbox.grid(row=2, column=0, sticky="nsw")
 
         lb_scroll = ttk.Scrollbar(left, orient="vertical", command=self.drivers_listbox.yview)
-        lb_scroll.grid(row=1, column=1, sticky="ns")
+        lb_scroll.grid(row=2, column=1, sticky="ns")
         self.drivers_listbox.configure(yscrollcommand=lb_scroll.set)
 
         self.drivers_listbox.bind("<<ListboxSelect>>", self.on_driver_selected)
@@ -221,11 +294,15 @@ class F1App(tk.Tk):
         self.lbl_driver_best_gain = ttk.Label(stats, text="—")
         self.lbl_driver_best_gain.grid(row=2, column=1, sticky="w", pady=(6, 0))
 
-        self._load_drivers_list()
-
     def _load_drivers_list(self):
+        season_txt = self.drivers_season_var.get().strip()
+        df = pd.DataFrame()
         try:
-            df = get_drivers(ascending=True)
+            if season_txt:
+                season = int(season_txt)
+                df = get_drivers_by_season(season, ascending=self.drivers_sort_ascending)
+            else:
+                df = get_drivers(ascending=self.drivers_sort_ascending)
         except Exception as e:
             messagebox.showerror("Błąd", f"Nie udało się pobrać listy kierowców:\n{e}")
             return
@@ -233,7 +310,6 @@ class F1App(tk.Tk):
         self.drivers_listbox.delete(0, tk.END)
         self.driver_ids = df["_id"].tolist()
 
-        # w listboxie: "Nazwisko Imię"
         for family, name in zip(df["family_name"].tolist(), df["name"].tolist()):
             self.drivers_listbox.insert(tk.END, f"{family} {name}")
 
@@ -284,6 +360,149 @@ class F1App(tk.Tk):
             diff_txt = f"+{diff}" if diff > 0 else str(diff)
             self.lbl_driver_best_gain.configure(text=diff_txt)
 
+    def _toggle_sort_drivers(self):
+        self.drivers_sort_ascending = not self.drivers_sort_ascending
+        self.drivers_sort_btn.configure(text="↑" if self.drivers_sort_ascending else "↓")
+        self._load_drivers_list()
+
+    # =========================
+    # ZESPOŁY
+    # =========================
+    def _build_teams_tab(self):
+        container = ttk.Frame(self.tab_teams)
+        container.pack(fill="both", expand=True)
+
+        container.columnconfigure(0, weight=0)
+        container.columnconfigure(1, weight=1)
+        container.rowconfigure(0, weight=1)
+
+        left = ttk.Frame(container)
+        left.grid(row=0, column=0, sticky="nsw", padx=(0, 12))
+        left.rowconfigure(1, weight=1)
+
+        ttk.Label(left, text="Zespoły").grid(row=0, column=0, sticky="w", pady=(0, 2))
+
+        # season filter (dropdown) + sort toggle
+        filter_frame = ttk.Frame(left)
+        filter_frame.grid(row=1, column=0, columnspan=2, sticky="we", pady=(0, 0))
+        filter_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(filter_frame, text="Sezon:").grid(row=0, column=0, sticky="w", padx=0, pady=0)
+        self.teams_season_var = tk.StringVar()
+        self.teams_season_cb = ttk.Combobox(filter_frame, textvariable=self.teams_season_var, state="readonly", width=10)
+        self.teams_season_cb.grid(row=0, column=1, sticky="w", padx=2)
+        self.teams_season_cb.bind("<<ComboboxSelected>>", lambda e: self._load_teams_list())
+
+        # sort ascending/descending button
+        self.teams_sort_ascending = True
+        self.teams_sort_btn = ttk.Button(filter_frame, text="↑", width=2, command=self._toggle_sort_teams)
+        self.teams_sort_btn.grid(row=0, column=2, padx=0)
+
+        self.teams_listbox = tk.Listbox(left, height=20, activestyle="dotbox", width=35)
+        self.teams_listbox.grid(row=2, column=0, sticky="nsw")
+
+        lb_scroll = ttk.Scrollbar(left, orient="vertical", command=self.teams_listbox.yview)
+        lb_scroll.grid(row=2, column=1, sticky="ns")
+        self.teams_listbox.configure(yscrollcommand=lb_scroll.set)
+
+        self.teams_listbox.bind("<<ListboxSelect>>", self.on_team_selected)
+
+        right = ttk.Frame(container)
+        right.grid(row=0, column=1, sticky="nsew")
+        right.columnconfigure(0, weight=1)
+
+        self.lbl_team_name = ttk.Label(right, text="Wybierz zespół", font=("Segoe UI", 16, "bold"))
+        self.lbl_team_name.grid(row=0, column=0, sticky="w")
+
+        self.lbl_team_info = ttk.Label(right, text="Kliknij zespół po lewej, żeby zobaczyć szczegóły.")
+        self.lbl_team_info.grid(row=1, column=0, sticky="w", pady=(4, 12))
+
+        ttk.Separator(right, orient="horizontal").grid(row=2, column=0, sticky="ew", pady=(0, 12))
+
+        stats = ttk.Frame(right)
+        stats.grid(row=3, column=0, sticky="nsew")
+        stats.columnconfigure(1, weight=1)
+
+        ttk.Label(stats, text="Statystyki", font=("Segoe UI", 12, "bold")).grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, 8)
+        )
+
+        ttk.Label(stats, text="Najlepszy tor (avg pozycja):").grid(row=1, column=0, sticky="w", padx=(0, 10))
+        self.lbl_team_best_circuit = ttk.Label(stats, text="—")
+        self.lbl_team_best_circuit.grid(row=1, column=1, sticky="w")
+
+        ttk.Label(stats, text="Największy zysk pozycji:").grid(row=2, column=0, sticky="w", padx=(0, 10), pady=(6, 0))
+        self.lbl_team_best_gain = ttk.Label(stats, text="—")
+        self.lbl_team_best_gain.grid(row=2, column=1, sticky="w", pady=(6, 0))
+
+    def _load_teams_list(self):
+        season_txt = self.teams_season_var.get().strip()
+        df = pd.DataFrame()
+        try:
+            if season_txt:
+                season = int(season_txt)
+                df = get_teams_by_season(season, ascending=self.teams_sort_ascending)
+            else:
+                df = get_teams(ascending=self.teams_sort_ascending)
+        except Exception as e:
+            messagebox.showerror("Błąd", f"Nie udało się pobrać listy zespołów:\n{e}")
+            return
+
+        self.teams_listbox.delete(0, tk.END)
+        self.team_ids = df["_id"].tolist()
+
+        for name in df["name"].tolist():
+            self.teams_listbox.insert(tk.END, name)
+
+    def on_team_selected(self, event):
+        selection = self.teams_listbox.curselection()
+        if not selection:
+            return
+
+        idx = selection[0]
+        team_id = self.team_ids[idx]
+
+        try:
+            df_t = get_team_data(team_id)
+            df_best_circuit = get_best_circuit_of_team(team_id)
+            df_gain = get_most_gained_positions_by_team(team_id)
+        except Exception as e:
+            messagebox.showerror("Błąd", f"Nie udało się pobrać danych zespołu:\n{e}")
+            return
+
+        if df_t.empty:
+            self.lbl_team_name.configure(text="Nie znaleziono zespołu")
+            self.lbl_team_info.configure(text="")
+            self.lbl_team_best_circuit.configure(text="—")
+            self.lbl_team_best_gain.configure(text="—")
+            return
+
+        t = df_t.iloc[0]
+        self.lbl_team_name.configure(text=str(t["name"]))
+
+        info_parts = []
+        if pd.notna(t.get("nationality")):
+            info_parts.append(str(t["nationality"]))
+        self.lbl_team_info.configure(text=" | ".join(info_parts) if info_parts else "")
+
+        if df_best_circuit.empty:
+            self.lbl_team_best_circuit.configure(text="brak danych")
+        else:
+            bc = df_best_circuit.iloc[0]
+            self.lbl_team_best_circuit.configure(text=f"{bc['name']} (avg: {bc['mean_pos']:.2f})")
+
+        if df_gain.empty:
+            self.lbl_team_best_gain.configure(text="brak danych")
+        else:
+            g = df_gain.iloc[0]
+            diff = int(g["diff"])
+            diff_txt = f"+{diff}" if diff > 0 else str(diff)
+            self.lbl_team_best_gain.configure(text=diff_txt)
+
+    def _toggle_sort_teams(self):
+        self.teams_sort_ascending = not self.teams_sort_ascending
+        self.teams_sort_btn.configure(text="↑" if self.teams_sort_ascending else "↓")
+        self._load_teams_list()
 
 if __name__ == "__main__":
     app = F1App()

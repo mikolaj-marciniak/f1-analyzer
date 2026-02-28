@@ -8,12 +8,29 @@ def get_drivers(ascending: bool = True) -> pd.DataFrame:
     sql = text(f"""
         SELECT _id, family_name, name
         FROM driver
-        ORDER BY family_name {order}, name {order};
+        ORDER BY family_name {order}, name ASC;
     """)
 
     engine = get_engine()
     with engine.begin() as conn:
         return pd.read_sql(sql, conn)
+    
+def get_drivers_by_season(season: int, ascending: bool = True) -> pd.DataFrame:
+    order = "ASC" if ascending else "DESC"
+
+    sql = text(f"""
+        SELECT driver._id, driver.family_name, driver.name
+        FROM result
+        JOIN race ON result.fk_race_id = race._id
+        JOIN driver ON result.fk_driver_id = driver._id
+        WHERE race.season = :season
+        GROUP BY driver._id, driver.family_name, driver.name
+        ORDER BY driver.family_name {order}, driver.name ASC;
+    """)
+
+    engine = get_engine()
+    with engine.begin() as conn:
+        return pd.read_sql(sql, conn, params={'season': season})
     
 def get_driver_data(driver_id: int) -> pd.DataFrame:
     sql = text("""
