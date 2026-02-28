@@ -3,6 +3,7 @@ from fastf1.ergast import Ergast
 
 from sqlalchemy.engine import Engine
 from sqlalchemy import text
+import requests
 
 import time
 
@@ -14,25 +15,46 @@ def extract_results(season: int) -> pd.DataFrame:
     chunks = []
 
     while True:
-        time.sleep(1)
-        resp = ergast.get_race_results(limit=limit, offset=offset, season=season)
+        try:
+            # Odczekaj chwilę przed każdym zapytaniem
+            time.sleep(1.2) 
+            
+            print(f"Sezon {season}: Pobieram offset {offset}...")
+            resp = ergast.get_race_results(limit=limit, offset=offset, season=season)
 
-        if not resp.content:
-            break
+            # Jeśli nie ma więcej danych, wychodzimy z pętli
+            if not resp or not resp.content:
+                break
 
-        for idx, row in resp.description.iterrows():
-            runda = row['round']
-            df_race = resp.content[idx]
+            for idx, row in resp.description.iterrows():
+                runda = row['round']
+                df_race = resp.content[idx]
 
-            df_race['season'] = season
-            df_race['round'] = runda
+                df_race['season'] = season
+                df_race['round'] = runda
 
-            if 'fastestLapRank' not in df_race:
-                df_race['fastestLapRank'] = None
+                if 'fastestLapRank' not in df_race.columns:
+                    df_race['fastestLapRank'] = None
 
-            chunks.append(df_race)
+                chunks.append(df_race)
 
-        offset += limit
+            # Sprawdzenie czy pobraliśmy pełną paczkę - jeśli nie, to koniec danych
+            # (W ergast-py sumujemy długość wszystkich df w content)
+            total_in_batch = sum(len(df) for df in resp.content)
+            if total_in_batch < limit:
+                break
+
+            offset += limit
+
+        except Exception as e:
+            # Jeśli dostaniemy błąd (np. 429 Too Many Requests)
+            if "429" in str(e):
+                print(f"Blokada API! Czekam 60 sekund przed ponowieniem offsetu {offset}...")
+                time.sleep(60)
+                continue # Próbuje ten sam offset jeszcze raz
+            else:
+                print(f"Błąd krytyczny w sezonie {season}: {e}")
+                break
 
     return (pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()).copy()
 
