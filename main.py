@@ -1,4 +1,4 @@
-from pipeline import run
+from ui.app import run_app
 
 if __name__ == "__main__":
-    run(2024)
+    run_app()
