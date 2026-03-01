@@ -6,8 +6,47 @@ from sqlalchemy import text
 
 ergast = Ergast()
 
+import time
+import random
+import pandas as pd
+
 def extract_races(season: int) -> pd.DataFrame:
-    return ergast.get_race_schedule(season=season).copy()
+    def should_retry(e: Exception) -> bool:
+        msg = str(e).lower()
+        return (
+            "too many requests" in msg
+            or "429" in msg
+            or "rate limit" in msg
+            or "timeout" in msg
+            or "connection" in msg
+            or "temporar" in msg
+            or "service unavailable" in msg
+        )
+
+    max_tries = 10
+    last_exc: Exception | None = None
+
+    for attempt in range(1, max_tries + 1):
+        try:
+            # stały throttle + jitter
+            time.sleep(1.4 + random.random() * 0.6)
+
+            df = ergast.get_race_schedule(season=season)
+            # FastF1 czasem zwraca None/empty w edge-case’ach
+            return (df.copy() if df is not None else pd.DataFrame())
+
+        except Exception as e:
+            last_exc = e
+            if not should_retry(e):
+                raise
+
+            backoff = min(90, 2 ** attempt) + random.random()
+            time.sleep(backoff)
+
+    raise RuntimeError(
+        f"Nie udało się pobrać race_schedule dla sezonu {season} "
+        f"po {max_tries} próbach. Ostatni błąd: {last_exc}"
+    )
 
 def transform_races(races_df: pd.DataFrame) -> pd.DataFrame:
     required = {'season', 'round', 'circuitId'}

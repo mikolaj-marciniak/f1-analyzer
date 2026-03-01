@@ -3,65 +3,99 @@ from fastf1.ergast import Ergast
 
 from sqlalchemy.engine import Engine
 from sqlalchemy import text
+
+import time
+from datetime import date
+
+ergast = Ergast()
+
+import time
+import random
+import pandas as pd
 import requests
 
 import time
-
-ergast = Ergast()
+import random
+import pandas as pd
 
 def extract_results(season: int) -> pd.DataFrame:
     limit = 100
     offset = 0
-    chunks = []
+    chunks: list[pd.DataFrame] = []
+
+    def should_retry(e: Exception) -> bool:
+        msg = str(e).lower()
+        return (
+            "too many requests" in msg
+            or "429" in msg
+            or "rate limit" in msg
+            or "timeout" in msg
+            or "connection" in msg
+            or "temporar" in msg  # temporary/temporarily
+            or "service unavailable" in msg
+        )
 
     while True:
-        try:
-            # Odczekaj chwilę przed każdym zapytaniem
-            time.sleep(1.2) 
-            
-            print(f"Sezon {season}: Pobieram offset {offset}...")
-            resp = ergast.get_race_results(limit=limit, offset=offset, season=season)
+        # --- retry dla jednego offsetu (nie przeskakujemy offsetu przy błędzie) ---
+        max_tries = 10
+        resp = None
 
-            # Jeśli nie ma więcej danych, wychodzimy z pętli
-            if not resp or not resp.content:
+        for attempt in range(1, max_tries + 1):
+            try:
+                # stały throttle + jitter (zmniejsza szansę na 429)
+                time.sleep(1.6 + random.random() * 0.6)
+
+                resp = ergast.get_race_results(limit=limit, offset=offset, season=season)
                 break
 
-            for idx, row in resp.description.iterrows():
-                runda = row['round']
-                df_race = resp.content[idx]
+            except Exception as e:
+                if not should_retry(e):
+                    raise
 
-                df_race['season'] = season
-                df_race['round'] = runda
+                # exponential backoff + jitter
+                backoff = min(90, 2 ** attempt) + random.random()
+                time.sleep(backoff)
 
-                if 'fastestLapRank' not in df_race.columns:
-                    df_race['fastestLapRank'] = None
+        if resp is None:
+            raise RuntimeError(
+                f"Nie udało się pobrać wyników (season={season}, offset={offset}) "
+                f"po {max_tries} próbach (ciągłe 429/timeout)."
+            )
 
-                chunks.append(df_race)
+        if not resp or not resp.content:
+            break
 
-            # Sprawdzenie czy pobraliśmy pełną paczkę - jeśli nie, to koniec danych
-            # (W ergast-py sumujemy długość wszystkich df w content)
-            total_in_batch = sum(len(df) for df in resp.content)
-            if total_in_batch < limit:
-                break
+        for idx, row in resp.description.iterrows():
+            runda = row["round"]
+            df_race = resp.content[idx].copy()
 
-            offset += limit
+            df_race["season"] = season
+            df_race["round"] = runda
 
-        except Exception as e:
-            # Jeśli dostaniemy błąd (np. 429 Too Many Requests)
-            if "429" in str(e):
-                print(f"Blokada API! Czekam 60 sekund przed ponowieniem offsetu {offset}...")
-                time.sleep(60)
-                continue # Próbuje ten sam offset jeszcze raz
-            else:
-                print(f"Błąd krytyczny w sezonie {season}: {e}")
-                break
+            if "fastestLapRank" not in df_race.columns:
+                df_race["fastestLapRank"] = None
 
-    return (pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()).copy()
+            chunks.append(df_race)
+
+        # defensywny warunek końca: jeśli nic nie przyszło na tej "stronie"
+        page_count = sum(len(df) for df in resp.content)
+        if page_count == 0:
+            break
+
+        # jeżeli ostatnia strona przyszła krótsza (często działa poprawnie dla Ergast)
+        if page_count < limit:
+            break
+
+        offset += limit
+
+    return pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()
 
 def transform_results(results_df: pd.DataFrame) -> pd.DataFrame:
     required = {'season', 'round', 'position', 'points', 'grid', 'driverId', 'constructorId', 'fastestLapRank'}
     missing = required - set(results_df.columns)
     if missing:
+        if results_df.empty:
+            return results_df
         raise ValueError(f"Missing columns in transform_results: {missing}")
     
     df = results_df.copy()
@@ -82,6 +116,8 @@ def load_results(engine: Engine, results_df: pd.DataFrame) -> None:
     required = {'season', 'round', 'source_driver_id', 'source_team_id', 'position', 'points', 'grid', 'fastest_lap_rank'}
     missing = required - set(results_df.columns)
     if missing:
+        if results_df.empty:
+            return
         raise ValueError(f"Missing columns in load_results: {missing}")
     
     df = results_df.copy()
